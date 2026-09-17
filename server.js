@@ -15,20 +15,22 @@ const CLIENT_API_KEY =
 const REFRESH_INTERVAL =
   Number(process.env.REFRESH_INTERVAL || 15) * 1000;
 
+// Configuration SportMonks
 const providerConfig = {
-  apiKey: process.env.ODDS_API_KEY || '',
-  sportKey:
-    process.env.SPORT_KEY || 'soccer_france_ligue_one',
-  region:
-    process.env.ODDS_REGION || 'eu'
+  apiKey: process.env.SPORTMONKS_API_KEY || ''
 };
 
-// Dernier instantane des cotes en memoire
+// Dernier instantané des données
 let snapshot = {
   source: 'init',
   updatedAt: null,
-  events: []
+  events: [],
+  error: null
 };
+
+// --------------------------------------------------
+// RÉCUPÉRATION DES DONNÉES SPORTMONKS
+// --------------------------------------------------
 
 async function refreshOdds() {
   try {
@@ -38,7 +40,8 @@ async function refreshOdds() {
     snapshot = {
       source,
       updatedAt: new Date().toISOString(),
-      events: enrichEvents(events)
+      events: enrichEvents(events),
+      error: null
     };
 
     io.to('odds').emit(
@@ -47,17 +50,33 @@ async function refreshOdds() {
     );
 
     console.log(
-      `[odds] maj ${snapshot.events.length} matchs (${source})`
+      `[sportmonks] maj ${snapshot.events.length} matchs`
     );
 
   } catch (err) {
 
     console.error(
-      '[odds] erreur de rafraichissement:',
+      '[sportmonks] erreur:',
       err.message
+    );
+
+    snapshot = {
+      ...snapshot,
+      source: 'sportmonks',
+      updatedAt: new Date().toISOString(),
+      error: err.message
+    };
+
+    io.to('odds').emit(
+      'odds:update',
+      snapshot
     );
   }
 }
+
+// --------------------------------------------------
+// EXPRESS
+// --------------------------------------------------
 
 const app = express();
 
@@ -67,7 +86,10 @@ app.use(express.json());
 
 app.use(express.static('public'));
 
-// Middleware d'authentification par cle partagee
+// --------------------------------------------------
+// AUTHENTIFICATION CLIENT
+// --------------------------------------------------
+
 function requireKey(req, res, next) {
 
   const key =
@@ -86,26 +108,46 @@ function requireKey(req, res, next) {
   next();
 }
 
-// Verification de fonctionnement du serveur
+// --------------------------------------------------
+// HEALTH CHECK
+// --------------------------------------------------
+
 app.get('/health', (_req, res) => {
 
   res.json({
-    status: 'ok'
+    status: 'ok',
+    service: 'Serveur SportMonks',
+    sport: 'football',
+    source: 'SportMonks',
+    updatedAt: snapshot.updatedAt
   });
 
 });
 
-// Endpoint REST : recuperer le dernier instantane des cotes
+// --------------------------------------------------
+// API DES MATCHS
+// --------------------------------------------------
+
 app.get(
   '/api/odds',
   requireKey,
   (_req, res) => {
+
     res.json(snapshot);
+
   }
 );
 
+// --------------------------------------------------
+// SERVEUR HTTP
+// --------------------------------------------------
+
 const server =
   http.createServer(app);
+
+// --------------------------------------------------
+// WEBSOCKET
+// --------------------------------------------------
 
 const io =
   new SocketServer(server, {
@@ -114,7 +156,7 @@ const io =
     }
   });
 
-// Authentification des connexions WebSocket
+// Authentification WebSocket
 io.use((socket, next) => {
 
   const key =
@@ -126,12 +168,14 @@ io.use((socket, next) => {
     return next(
       new Error('Cle API invalide')
     );
+
   }
 
   next();
 
 });
 
+// Connexion client
 io.on('connection', (socket) => {
 
   socket.join('odds');
@@ -141,7 +185,7 @@ io.on('connection', (socket) => {
     socket.id
   );
 
-  // Envoi immediat du dernier instantane connu
+  // Envoi immédiat des dernières données
   socket.emit(
     'odds:update',
     snapshot
@@ -150,17 +194,22 @@ io.on('connection', (socket) => {
   socket.on(
     'disconnect',
     () => {
+
       console.log(
-        '[ws] deconnecte:',
+        '[ws] client deconnecte:',
         socket.id
       );
+
     }
   );
 
 });
 
+// --------------------------------------------------
+// DÉMARRAGE DU SERVEUR
+// --------------------------------------------------
+
 // IMPORTANT POUR RENDER
-// Le serveur doit ecouter sur toutes les interfaces.
 const HOST = '0.0.0.0';
 
 server.listen(
@@ -169,17 +218,27 @@ server.listen(
   () => {
 
     console.log(
-      `Serveur bookmaker sur http://${HOST}:${PORT}`
+      `Serveur SportMonks sur http://${HOST}:${PORT}`
     );
 
-    console.log(
-      providerConfig.apiKey
-        ? '[mode LIVE]'
-        : '[mode DEMO - cotes simulees]'
-    );
+    if (providerConfig.apiKey) {
 
+      console.log(
+        '[mode SPORTMONKS]'
+      );
+
+    } else {
+
+      console.log(
+        '[ERREUR] SPORTMONKS_API_KEY absente'
+      );
+
+    }
+
+    // Première récupération
     refreshOdds();
 
+    // Actualisation automatique
     setInterval(
       refreshOdds,
       REFRESH_INTERVAL
