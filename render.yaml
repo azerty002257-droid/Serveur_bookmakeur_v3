@@ -1,0 +1,25 @@
+# Configuration de deploiement Render (https://render.com)
+# Render lit ce fichier automatiquement pour creer le service.
+services:
+  - type: web
+    name: bookmaker-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      # Render fournit PORT automatiquement, on ecoute sur toutes les interfaces
+      - key: HOST
+        value: 0.0.0.0
+      - key: SPORT_KEY
+        value: soccer_france_ligue_one
+      - key: ODDS_REGION
+        value: eu
+      - key: REFRESH_INTERVAL
+        value: "15"
+      # A definir SECRETEMENT dans le dashboard Render (ne pas mettre la valeur ici)
+      - key: CLIENT_API_KEY
+        sync: false
+      - key: ODDS_API_KEY
+        sync: false

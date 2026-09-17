@@ -1,0 +1,12 @@
+# Dependances
+node_modules/
+
+# Variables d'environnement (NE JAMAIS committer : contient vos cles secretes)
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Divers
+.DS_Store
