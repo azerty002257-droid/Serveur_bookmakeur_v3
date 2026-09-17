@@ -1,69 +1,64 @@
-function averagePrice(events, teamName) {
-  const prices = [];
 
-  for (const bm of events.bookmakers || []) {
-    for (const market of bm.markets || []) {
-      if (market.key !== 'h2h') continue;
+// Fournisseur SportMonks Football API 3.0
+// Récupère matchs + équipes + statistiques + cotes
 
-      for (const o of market.outcomes || []) {
-        if (o.name === teamName) {
-          prices.push(o.price);
-        }
-      }
+const BASE_URL = 'https://api.sportmonks.com/v3/football';
+
+function getTodayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function sportMonksRequest(path, apiKey) {
+  const url = `${BASE_URL}${path}`;
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      Accept: 'application/json'
     }
+  });
+
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `SportMonks ${response.status}: ${body}`
+    );
   }
 
-  if (!prices.length) return null;
-
-  return prices.reduce((a, b) => a + b, 0) / prices.length;
+  return JSON.parse(body);
 }
 
-function impliedProbability(odd) {
-  if (!odd) return null;
+export async function getRawOdds(config) {
+  if (!config.apiKey) {
+    throw new Error(
+      'SPORTMONKS_API_KEY est absente dans Render'
+    );
+  }
 
-  return +((1 / odd) * 100).toFixed(1);
-}
+  const date = getTodayDate();
 
-export function enrichEvents(rawEvents) {
-  return rawEvents.map((ev) => {
-    const homeOdd = averagePrice(ev, ev.home_team);
-    const awayOdd = averagePrice(ev, ev.away_team);
+  const include = [
+    'participants',
+    'statistics.type',
+    'odds.market',
+    'odds.bookmaker',
+    'scores',
+    'state',
+    'league',
+    'season'
+  ].join(';');
 
-    let favorite = null;
-    let underdog = null;
+  const path =
+    `/fixtures/date/${date}` +
+    `?include=${encodeURIComponent(include)}` +
+    `&per_page=50`;
 
-    if (homeOdd != null && awayOdd != null) {
-      if (homeOdd < awayOdd) {
-        favorite = ev.home_team;
-        underdog = ev.away_team;
-      } else {
-        favorite = ev.away_team;
-        underdog = ev.home_team;
-      }
-    }
+  const result =
+    await sportMonksRequest(path, config.apiKey);
 
-    return {
-      id: ev.id,
-      commenceTime: ev.commence_time,
-
-      home: {
-        team: ev.home_team,
-        role: 'home',
-        odd: homeOdd != null ? +homeOdd.toFixed(2) : null,
-        impliedProbability: impliedProbability(homeOdd),
-        isFavorite: favorite === ev.home_team
-      },
-
-      away: {
-        team: ev.away_team,
-        role: 'away',
-        odd: awayOdd != null ? +awayOdd.toFixed(2) : null,
-        impliedProbability: impliedProbability(awayOdd),
-        isFavorite: favorite === ev.away_team
-      },
-
-      favorite,
-      underdog
-    };
-  });
+  return {
+    source: 'sportmonks',
+    events: result.data || []
+  };
 }
