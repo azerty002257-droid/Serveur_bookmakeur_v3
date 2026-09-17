@@ -1,1 +1,190 @@
 
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cotes en temps réel</title>
+
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 20px;
+    }
+
+    .meta {
+      color: #94a3b8;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    .card {
+      background: #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .team {
+      font-weight: 600;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-left: 8px;
+    }
+
+    .fav {
+      background: #22c55e;
+      color: #052e16;
+    }
+
+    .home {
+      background: #38bdf8;
+      color: #082f49;
+    }
+
+    .odd {
+      font-variant-numeric: tabular-nums;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .prob {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Cotes en temps réel</h1>
+
+  <div class="meta" id="meta">
+    Connexion...
+  </div>
+
+  <div id="list"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+
+  <script>
+    var API_KEY =
+      new URLSearchParams(location.search).get('apiKey') ||
+      'change-me-please';
+
+    var socket = io({
+      auth: {
+        apiKey: API_KEY
+      }
+    });
+
+    socket.on('connect_error', function (e) {
+      document.getElementById('meta').textContent =
+        'Erreur: ' + e.message;
+    });
+
+    socket.on('odds:update', function (snap) {
+      var meta = document.getElementById('meta');
+
+      meta.textContent =
+        'Source: ' +
+        snap.source +
+        ' | MAJ: ' +
+        (snap.updatedAt || '-');
+
+      var list = document.getElementById('list');
+
+      list.textContent = '';
+
+      (snap.events || []).forEach(function (ev) {
+        list.appendChild(renderEvent(ev));
+      });
+    });
+
+    function teamLine(side) {
+      var wrap = document.createElement('div');
+      wrap.className = 'row';
+
+      var left = document.createElement('div');
+
+      var name = document.createElement('span');
+      name.className = 'team';
+      name.textContent = side.team;
+
+      left.appendChild(name);
+
+      if (side.role === 'home') {
+        left.appendChild(badge('Domicile', 'home'));
+      }
+
+      if (side.isFavorite) {
+        left.appendChild(badge('Favori', 'fav'));
+      }
+
+      var right = document.createElement('div');
+
+      var odd = document.createElement('div');
+      odd.className = 'odd';
+
+      odd.textContent =
+        side.odd != null
+          ? side.odd.toFixed(2)
+          : '-';
+
+      var prob = document.createElement('div');
+      prob.className = 'prob';
+
+      prob.textContent =
+        side.impliedProbability != null
+          ? side.impliedProbability + ' %'
+          : '';
+
+      right.appendChild(odd);
+      right.appendChild(prob);
+
+      wrap.appendChild(left);
+      wrap.appendChild(right);
+
+      return wrap;
+    }
+
+    function badge(text, cls) {
+      var b = document.createElement('span');
+
+      b.className = 'badge ' + cls;
+      b.textContent = text;
+
+      return b;
+    }
+
+    function renderEvent(ev) {
+      var card = document.createElement('div');
+
+      card.className = 'card';
+
+      card.appendChild(teamLine(ev.home));
+      card.appendChild(teamLine(ev.away));
+
+      return card;
+    }
+  </script>
+</body>
+</html>
